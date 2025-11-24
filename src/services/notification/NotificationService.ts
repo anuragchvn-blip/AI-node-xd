@@ -142,9 +142,9 @@ ${payload.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
    */
   async sendSlackNotification(webhookUrl: string, payload: NotificationPayload): Promise<void> {
     try {
-      // Create brief summary for Slack message
-      const briefAnalysis = payload.aiAnalysis.length > 500 
-        ? payload.aiAnalysis.substring(0, 500) + '...\n\n📎 *See attached report for full analysis*'
+      // Create brief summary for Slack message (full analysis in Gist)
+      const briefAnalysis = payload.aiAnalysis.length > 400 
+        ? payload.aiAnalysis.substring(0, 400) + '...\n\n📄 *See full report button below*'
         : payload.aiAnalysis;
 
       const message = {
@@ -225,54 +225,52 @@ ${payload.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
         } as any);
       }
 
-      // If analysis is long, create GitHub Gist and add link
-      if (payload.aiAnalysis.length > 500) {
-        const markdownReport = this.generateMarkdownReport(payload);
+      // Always create GitHub Gist with full report for CI failures
+      const markdownReport = this.generateMarkdownReport(payload);
+      
+      // Save report to file for GitHub artifacts
+      const fs = require('fs');
+      const path = require('path');
+      const reportsDir = path.join(process.cwd(), 'ci-reports');
+      if (!fs.existsSync(reportsDir)) {
+        fs.mkdirSync(reportsDir, { recursive: true });
+      }
+      
+      const fileName = `failure-${payload.commitHash.substring(0, 8)}-${Date.now()}.md`;
+      const filePath = path.join(reportsDir, fileName);
+      fs.writeFileSync(filePath, markdownReport);
+      
+      logger.info('Detailed report saved', { filePath });
+      
+      // Create GitHub Gist with full report
+      const gistUrl = await this.createGist(
+        `CI Failure Report - ${payload.commitHash.substring(0, 8)}`,
+        markdownReport,
+        fileName
+      );
+      
+      if (gistUrl) {
+        // Add divider
+        message.blocks.push({
+          type: 'divider'
+        } as any);
         
-        // Save report to file for GitHub artifacts
-        const fs = require('fs');
-        const path = require('path');
-        const reportsDir = path.join(process.cwd(), 'ci-reports');
-        if (!fs.existsSync(reportsDir)) {
-          fs.mkdirSync(reportsDir, { recursive: true });
-        }
+        // Add button with actions block to view full report
+        message.blocks.push({
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: '📄 View Full Report', emoji: true },
+              url: gistUrl,
+              style: 'primary'
+            }
+          ]
+        } as any);
         
-        const fileName = `failure-${payload.commitHash.substring(0, 8)}-${Date.now()}.md`;
-        const filePath = path.join(reportsDir, fileName);
-        fs.writeFileSync(filePath, markdownReport);
-        
-        logger.info('Detailed report saved', { filePath });
-        
-        // Create GitHub Gist with full report
-        const gistUrl = await this.createGist(
-          `CI Failure Report - ${payload.commitHash.substring(0, 8)}`,
-          markdownReport,
-          fileName
-        );
-        
-        if (gistUrl) {
-          // Add divider
-          message.blocks.push({
-            type: 'divider'
-          } as any);
-          
-          // Add button with actions block to view full report
-          message.blocks.push({
-            type: 'actions',
-            elements: [
-              {
-                type: 'button',
-                text: { type: 'plain_text', text: '📄 View Full Report', emoji: true },
-                url: gistUrl,
-                style: 'primary'
-              }
-            ]
-          } as any);
-          
-          logger.info('Gist link added to Slack message', { gistUrl });
-        } else {
-          logger.warn('Gist creation failed, link not added to Slack message');
-        }
+        logger.info('Gist link added to Slack message', { gistUrl });
+      } else {
+        logger.warn('Gist creation failed, link not added to Slack message');
       }
 
       await axios.post(webhookUrl, message);
