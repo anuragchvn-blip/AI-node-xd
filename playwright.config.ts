@@ -1,10 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import path from 'path';
 
-// Import the reporter from the SDK (using relative path since we are in the same repo)
-// In a real project, this would be: import CISnapshotReporter from '@ci-snapshot/sdk/dist/playwright';
-import CISnapshotReporter from './sdk/dist/playwright';
-
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -14,11 +10,8 @@ export default defineConfig({
   reporter: [
     ['list'],
     ['html'],
-    // Register our custom reporter
-    [path.resolve(__dirname, 'sdk/dist/playwright.js'), {
-      apiKey: 'sk_test_demo_key_12345', // Use the test key we created
-      apiUrl: 'http://localhost:3000'
-    }]
+    // CI reporter that calls API on test failures
+    [path.resolve(__dirname, 'ci-reporter.js')]
   ],
   use: {
     trace: 'on-first-retry',
