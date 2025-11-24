@@ -35,7 +35,9 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
         run: |
+          echo "🔧 Setting up test database..."
           npx ts-node test-setup.ts
+          echo "✅ Database setup complete"
 
       - name: Start API server
         env:
@@ -46,9 +48,12 @@ jobs:
           RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
           RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
         run: |
+          echo "🚀 Starting API server..."
           node dist/services/api/index.js &
           sleep 5
+          echo "🏥 Checking API health..."
           curl http://localhost:3000/health
+          echo "✅ API server ready"
 
       - name: Run Playwright tests with AI Analysis
         env:
