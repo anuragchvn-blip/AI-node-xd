@@ -106,6 +106,40 @@ export class NotificationService {
     const timestamp = new Date().toISOString();
     const shortCommit = payload.commitHash.substring(0, 8);
     
+    // Build recommendations section
+    let recommendationsSection = '';
+    if (payload.recommendations && payload.recommendations.length > 0) {
+      recommendationsSection = payload.recommendations
+        .map((r, i) => `### ${i + 1}. ${r}\n\nTake action on this recommendation to resolve the failure.`)
+        .join('\n\n');
+    } else {
+      recommendationsSection = '### ⚠️ No specific recommendations available\n\nReview the failure logs and AI analysis above for debugging guidance.';
+    }
+    
+    // Build similar patterns section
+    let similarPatternsSection = '';
+    if ((payload.similarPatterns || 0) > 0 && payload.similarPatternsDetails) {
+      const patternsList = payload.similarPatternsDetails
+        .map((p: any, i: number) => 
+          `### Pattern ${i + 1}\n- **Similarity:** ${p.similarity}%\n- **Summary:** ${p.summary}\n- **Date:** ${new Date(p.timestamp).toLocaleString()}`
+        )
+        .join('\n\n');
+      similarPatternsSection = `Found **${payload.similarPatterns}** similar failure pattern(s) in history.\n\n${patternsList}`;
+    } else {
+      similarPatternsSection = '**No similar patterns found.** This appears to be a new type of failure.';
+    }
+    
+    // Build failure details section
+    const failureDetails = payload.failureLogs || payload.failureMessage;
+    
+    // Build git diff section
+    let gitDiffSection = '_No git diff available_';
+    if (payload.gitDiff) {
+      const truncatedDiff = payload.gitDiff.substring(0, 3000);
+      const diffTruncated = payload.gitDiff.length > 3000;
+      gitDiffSection = '```diff\n' + truncatedDiff + (diffTruncated ? '\n... (diff truncated)' : '') + '\n```';
+    }
+    
     return `# 🚨 CI Failure Analysis Report
 
 > **Automated failure analysis powered by AI**
@@ -133,31 +167,27 @@ ${payload.aiAnalysis}
 
 ## 📋 Recommended Actions
 
-${payload.recommendations && payload.recommendations.length > 0 
-  ? payload.recommendations.map((r, i) => `### ${i + 1}. ${r}\n\nTake action on this recommendation to resolve the failure.`).join('\n\n')
-  : '### ⚠️ No specific recommendations available\n\nReview the failure logs and AI analysis above for debugging guidance.'}
+${recommendationsSection}
 
 ---
 
 ## ❌ Failure Details
 
-${payload.failureLogs ? `\`\`\`\n${payload.failureLogs}\n\`\`\`` : `\`\`\`\n${payload.failureMessage}\n\`\`\``}
+\`\`\`
+${failureDetails}
+\`\`\`
 
 ---
 
 ## 🔍 Similar Patterns Found
 
-${(payload.similarPatterns || 0) > 0 
-  ? `Found **${payload.similarPatterns}** similar failure pattern(s) in history.\n\n${payload.similarPatternsDetails?.map((p: any, i: number) => 
-      `### Pattern ${i + 1}\n- **Similarity:** ${p.similarity}%\n- **Summary:** ${p.summary}\n- **Date:** ${new Date(p.timestamp).toLocaleString()}`
-    ).join('\n\n') || ''}`
-  : '**No similar patterns found.** This appears to be a new type of failure.'}
+${similarPatternsSection}
 
 ---
 
 ## 🔄 Recent Changes (Git Diff)
 
-${payload.gitDiff ? `\`\`\`diff\n${payload.gitDiff.substring(0, 3000)}${payload.gitDiff.length > 3000 ? '\n... (diff truncated)' : ''}\n\`\`\`` : '_No git diff available_'}
+${gitDiffSection}
 
 ---
 
