@@ -206,11 +206,39 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
       select: { creditsBalance: true },
     });
     
+    // Extract action items from AI analysis for recommendations
+    const extractRecommendations = (aiAnalysis: string): string[] => {
+      const recommendations: string[] = [];
+      
+      // Extract specific fix section
+      const fixMatch = aiAnalysis.match(/\*\*Specific fix:\*\*(.*?)(?=\*\*|$)/s);
+      if (fixMatch && fixMatch[1]) {
+        const fixText = fixMatch[1].trim().substring(0, 200);
+        if (fixText) recommendations.push(`Fix: ${fixText}`);
+      }
+      
+      // Add similarity info
+      if (similarPatterns.length > 0) {
+        recommendations.push(`⚠️ Similar failure occurred ${similarPatterns.length} time(s) before - check previous solutions`);
+      } else {
+        recommendations.push('ℹ️ This is a new failure pattern');
+      }
+      
+      // Fallback if no recommendations
+      if (recommendations.length === 0) {
+        recommendations.push('Review the AI analysis above for detailed fix instructions');
+      }
+      
+      return recommendations;
+    };
+    
     // Send Slack notification (if webhook configured AND not from test)
     const isTestRequest = req.headers['x-test-mode'] === 'true' || payload.commitHash?.includes('-test');
     const slackWebhook = process.env.SLACK_WEBHOOK_URL;
     if (slackWebhook && !isTestRequest) {
       try {
+        const recommendations = extractRecommendations(analysis);
+        
         await notificationService.sendSlackNotification(slackWebhook, {
           projectName: project.repoUrl || 'CI System',
           commitHash: payload.commitHash || 'unknown',
@@ -218,9 +246,7 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
           author: payload.author || 'unknown',
           failureMessage: failedTests[0].errorMessage,
           aiAnalysis: analysis,
-          recommendations: similarPatterns.length > 0 
-            ? [`Similar failure found ${similarPatterns.length} time(s) before`, 'Review previous fixes for guidance']
-            : ['This is a new failure pattern', 'No similar issues found in history'],
+          recommendations,
           creditsUsed: 1,
           creditsRemaining: updatedOrg?.creditsBalance || 0,
           similarPatterns: similarPatterns.length,

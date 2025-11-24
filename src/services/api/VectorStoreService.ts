@@ -50,22 +50,36 @@ export class VectorStoreService {
   }, retries = 3): Promise<string> {
     const { failureLogs, gitDiff } = params;
 
-    const prompt = `
-    You are a Senior DevOps Engineer. Analyze the following CI failure and Git Diff.
-    
-    FAILURE LOGS:
-    ${failureLogs.substring(0, 5000)}
-    
-    GIT DIFF:
-    ${gitDiff.substring(0, 5000)}
-    
-    Task:
-    1. Explain WHY it failed.
-    2. Suggest a specific fix.
-    3. Rate the confidence (0-100%).
-    
-    Keep it concise.
-    `;
+    const prompt = `You are an expert Senior DevOps/QA Engineer with deep knowledge of CI/CD pipelines, test automation, and debugging. 
+
+Analyze this CI test failure comprehensively:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FAILURE LOGS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${failureLogs.substring(0, 4000)}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GIT CHANGES (RECENT COMMIT):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${gitDiff.substring(0, 3000)}
+
+Provide a detailed analysis in this exact format:
+
+**Failure Analysis:**
+
+1. **Why it failed:** Provide a clear, technical explanation of the root cause. Identify which specific code change, configuration, or environment issue caused the failure.
+
+2. **Specific fix:** Give actionable, step-by-step instructions to fix the issue. Include exact code changes, commands, or configuration updates needed.
+
+3. **Confidence rating:** X% - Explain your confidence level and reasoning.
+
+**Additional Context:**
+- If this is a test issue vs actual bug
+- If environment/dependencies are involved
+- If this could affect other parts of the system
+
+Be thorough but concise. Focus on actionable insights.`;
 
     try {
       const completion = await groq.chat.completions.create({
