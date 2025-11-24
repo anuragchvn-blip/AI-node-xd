@@ -100,37 +100,56 @@ export class NotificationService {
   }
 
   /**
-   * Strip ANSI color codes and control characters from text
+   * Strip ANSI color codes and control characters from text - AGGRESSIVE
    */
   private stripAnsiCodes(text: string): string {
-    if (!text) return text;
-    // Remove ANSI escape sequences
+    if (!text) return '';
+    
     return text
-      .replace(/\x1b\[[0-9;]*m/g, '') // ANSI color codes
-      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Other ANSI sequences
-      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Control characters
-      .replace(/�/g, ''); // Replacement character
+      // Remove all ANSI escape sequences (including the weird � characters)
+      .replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '')
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+      .replace(/\[\d+m/g, '')
+      .replace(/�\[\d+m/g, '')
+      .replace(/�\[[\d;]+m/g, '')
+      // Remove replacement characters
+      .replace(/�/g, '')
+      // Remove control characters
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+      // Clean up multiple spaces
+      .replace(/\s{3,}/g, '  ')
+      .trim();
   }
 
   /**
-   * Wrap long lines to prevent horizontal scrolling
+   * Parse test failures into clean structured format
    */
-  private wrapLine(line: string, maxLength: number): string {
-    if (line.length <= maxLength) return line;
-    const wrapped: string[] = [];
-    let currentLine = '';
+  private parseFailureLogs(logs: string): Array<{test: string, error: string}> {
+    const failures: Array<{test: string, error: string}> = [];
     
-    line.split(' ').forEach(word => {
-      if ((currentLine + word).length > maxLength) {
-        if (currentLine) wrapped.push(currentLine.trim());
-        currentLine = word + ' ';
-      } else {
-        currentLine += word + ' ';
+    // Split by separator lines
+    const sections = logs.split(/[-]{10,}/);
+    
+    sections.forEach(section => {
+      const cleaned = this.stripAnsiCodes(section).trim();
+      if (!cleaned) return;
+      
+      // Extract test name and error
+      const lines = cleaned.split('\n').filter(l => l.trim());
+      if (lines.length > 0) {
+        const testName = lines[0];
+        const errorLines = lines.slice(1).join('\n');
+        
+        if (testName && errorLines) {
+          failures.push({
+            test: testName,
+            error: errorLines
+          });
+        }
       }
     });
     
-    if (currentLine) wrapped.push(currentLine.trim());
-    return wrapped.join('\n');
+    return failures;
   }
 
   /**
@@ -140,19 +159,35 @@ export class NotificationService {
     const timestamp = new Date().toISOString();
     const shortCommit = payload.commitHash.substring(0, 8);
     
-    // Build recommendations section - don't add numbers if already numbered
+    // Parse failures into clean structure
+    const rawFailureDetails = payload.failureLogs || payload.failureMessage;
+    const parsedFailures = this.parseFailureLogs(rawFailureDetails);
+    
+    // Build failure details section with proper formatting
+    let failureDetailsSection = '';
+    if (parsedFailures.length > 0) {
+      failureDetailsSection = parsedFailures.map((failure, i) => {
+        return `### Test ${i + 1}: ${failure.test}\n\n\`\`\`\n${failure.error}\n\`\`\``;
+      }).join('\n\n');
+    } else {
+      // Fallback to cleaned raw logs
+      const cleaned = this.stripAnsiCodes(rawFailureDetails);
+      failureDetailsSection = `\`\`\`\n${cleaned}\n\`\`\``;
+    }
+    
+    // Build recommendations section
     let recommendationsSection = '';
     if (payload.recommendations && payload.recommendations.length > 0) {
       recommendationsSection = payload.recommendations
         .map((r, i) => {
-          // Check if recommendation already starts with number
-          const startsWithNumber = /^\d+\./.test(r.trim());
-          const prefix = startsWithNumber ? '' : `${i + 1}. `;
-          return `### ${prefix}${r}\n\n✅ **Action Required:** Apply this fix to resolve the issue.`;
+          const cleaned = this.stripAnsiCodes(r);
+          const startsWithNumber = /^\d+\./.test(cleaned.trim());
+          const text = startsWithNumber ? cleaned : `${i + 1}. ${cleaned}`;
+          return `**${text}**`;
         })
-        .join('\n\n---\n\n');
+        .join('\n\n');
     } else {
-      recommendationsSection = '### ⚠️ No specific recommendations available\n\nReview the failure logs and AI analysis above for debugging guidance.';
+      recommendationsSection = '_No specific recommendations available. Review the AI analysis and failure logs above._';
     }
     
     // Build similar patterns section
@@ -160,35 +195,26 @@ export class NotificationService {
     if ((payload.similarPatterns || 0) > 0 && payload.similarPatternsDetails) {
       const patternsList = payload.similarPatternsDetails
         .map((p: any, i: number) => 
-          `#### Pattern ${i + 1}\n\n- **Similarity Score:** ${p.similarity}%\n- **Description:** ${p.summary}\n- **First Seen:** ${new Date(p.timestamp).toLocaleString()}`
+          `**Pattern ${i + 1}**\n- Similarity: ${p.similarity}%\n- ${p.summary}\n- Date: ${new Date(p.timestamp).toLocaleDateString()}`
         )
         .join('\n\n');
-      similarPatternsSection = `Found **${payload.similarPatterns}** similar failure pattern(s) in history:\n\n${patternsList}`;
+      similarPatternsSection = `Found **${payload.similarPatterns}** similar failure(s):\n\n${patternsList}`;
     } else {
-      similarPatternsSection = '**No similar patterns found.** This appears to be a new type of failure.';
+      similarPatternsSection = '_No similar patterns found. This is a new failure type._';
     }
     
-    // Build failure details section - strip ANSI codes and wrap long lines
-    const rawFailureDetails = payload.failureLogs || payload.failureMessage;
-    const cleanFailureDetails = this.stripAnsiCodes(rawFailureDetails);
-    // Split long lines for better readability
-    const failureDetails = cleanFailureDetails
-      .split('\n')
-      .map(line => line.length > 120 ? this.wrapLine(line, 120) : line)
-      .join('\n');
-    
-    // Build git diff section - strip ANSI codes
+    // Build git diff section
     let gitDiffSection = '_No git diff available_';
     if (payload.gitDiff) {
       const cleanDiff = this.stripAnsiCodes(payload.gitDiff);
-      const truncatedDiff = cleanDiff.substring(0, 3000);
-      const diffTruncated = cleanDiff.length > 3000;
-      gitDiffSection = '```diff\n' + truncatedDiff + (diffTruncated ? '\n\n... (diff truncated for brevity)' : '') + '\n```';
+      const truncated = cleanDiff.substring(0, 2500);
+      const wasTruncated = cleanDiff.length > 2500;
+      gitDiffSection = '```diff\n' + truncated + (wasTruncated ? '\n... (truncated)' : '') + '\n```';
     }
     
     return `# 🚨 CI Failure Analysis Report
 
-> **Automated failure analysis powered by AI**
+**Automated failure analysis powered by AI**
 
 ---
 
@@ -200,14 +226,14 @@ export class NotificationService {
 | **Branch** | \`${payload.branch}\` |
 | **Commit** | \`${shortCommit}\` |
 | **Author** | ${payload.author} |
-| **Timestamp** | ${timestamp} |
+| **Date** | ${new Date(timestamp).toLocaleString()} |
 | **Status** | ❌ Failed |
 
 ---
 
 ## 🤖 AI Analysis
 
-${payload.aiAnalysis}
+${this.stripAnsiCodes(payload.aiAnalysis)}
 
 ---
 
@@ -217,32 +243,30 @@ ${recommendationsSection}
 
 ---
 
-## ❌ Failure Details
+## ❌ Failed Tests
 
-\`\`\`
-${failureDetails}
-\`\`\`
+${failureDetailsSection}
 
 ---
 
-## 🔍 Similar Patterns Found
+## 🔍 Similar Patterns
 
 ${similarPatternsSection}
 
 ---
 
-## 🔄 Recent Changes (Git Diff)
+## 🔄 Git Changes
 
 ${gitDiffSection}
 
 ---
 
-## 📊 Analysis Metrics
+## 📊 Metrics
 
 | Metric | Value |
 |--------|-------|
 | Credits Used | ${payload.creditsUsed || 0} |
-| Credits Remaining | **${payload.creditsRemaining || 0}** |
+| Credits Remaining | ${payload.creditsRemaining || 0} |
 | Similar Patterns | ${payload.similarPatterns || 0} |
 | Vector Dimensions | ${payload.vectorDimensions || 1536} |
 
@@ -250,15 +274,15 @@ ${gitDiffSection}
 
 ## 🛠️ Next Steps
 
-1. **Review the AI Analysis** section above for root cause identification
-2. **Apply the Recommended Actions** in order of priority
-3. **Check Similar Patterns** to see if this issue has occurred before
-4. **Review the Git Diff** to understand what code changes triggered this failure
-5. **Fix the issue** and push to trigger a new CI run
+1. Review the AI Analysis for root cause
+2. Apply recommended actions in order
+3. Check similar patterns for context
+4. Review git changes that triggered failure
+5. Fix and push to trigger new CI run
 
 ---
 
-<sub>Generated by **CI Snapshot AI System** • Powered by Groq AI & pgvector</sub>
+<sub>*Generated by CI Snapshot AI System • Powered by Groq AI & pgvector*</sub>
 `;
   }
 
