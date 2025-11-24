@@ -31,6 +31,12 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Setup test database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          npx ts-node test-setup.ts
+
       - name: Start API server
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
