@@ -1,0 +1,22 @@
+{
+  "name": "@ci-snapshot/sdk",
+  "version": "1.0.0",
+  "description": "SDK for CI Snapshot Analysis",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "ci-snapshot": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@playwright/test": "^1.40.0",
+    "typescript": "^5.0.0"
+  }
+}
