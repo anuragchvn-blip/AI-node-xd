@@ -256,7 +256,16 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
           creditsUsed: 1,
           creditsRemaining: updatedOrg?.creditsBalance || 0,
           similarPatterns: similarPatterns.length,
-          vectorDimensions: embedding.length
+          vectorDimensions: embedding.length,
+          // Enhanced data for detailed report
+          failureLogs: payload.failureLogs,
+          gitDiff: payload.gitDiff,
+          allFailedTests: failedTests,
+          similarPatternsDetails: similarPatterns.map((p: any) => ({
+            similarity: (p.similarity * 100).toFixed(1),
+            summary: p.summary,
+            timestamp: p.createdAt
+          }))
         });
         logger.info('Slack notification sent successfully');
       } catch (error: any) {
