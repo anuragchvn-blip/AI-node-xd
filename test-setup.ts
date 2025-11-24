@@ -12,29 +12,41 @@ async function testSetup() {
 
     // Test 2: Create Test Organization
     logger.info('Test 2: Creating test organization...');
-    const org = await prisma.organization.upsert({
-      where: { id: '00000000-0000-0000-0000-000000000001' },
-      update: {},
-      create: {
-        id: '00000000-0000-0000-0000-000000000001',
-        name: 'Test Organization',
-        creditsBalance: 100,
-      },
+    let org = await prisma.organization.findUnique({
+      where: { id: '00000000-0000-0000-0000-000000000001' }
     });
-    logger.info('✅ Organization created/found', { orgId: org.id, credits: org.creditsBalance });
+    
+    if (!org) {
+      org = await prisma.organization.create({
+        data: {
+          id: '00000000-0000-0000-0000-000000000001',
+          name: 'Test Organization',
+          creditsBalance: 100,
+        },
+      });
+      logger.info('✅ Organization created', { orgId: org.id, credits: org.creditsBalance });
+    } else {
+      logger.info('✅ Organization already exists', { orgId: org.id, credits: org.creditsBalance });
+    }
 
     // Test 3: Create Test Project
     logger.info('Test 3: Creating test project...');
-    const project = await prisma.project.upsert({
-      where: { apiKey: 'sk_test_demo_key_12345' },
-      update: {},
-      create: {
-        orgId: org.id,
-        apiKey: 'sk_test_demo_key_12345',
-        repoUrl: 'https://github.com/test/repo',
-      },
+    let project = await prisma.project.findUnique({
+      where: { apiKey: 'sk_test_demo_key_12345' }
     });
-    logger.info('✅ Project created/found', { projectId: project.id, apiKey: project.apiKey });
+    
+    if (!project) {
+      project = await prisma.project.create({
+        data: {
+          orgId: org.id,
+          apiKey: 'sk_test_demo_key_12345',
+          repoUrl: 'https://github.com/test/repo',
+        },
+      });
+      logger.info('✅ Project created', { projectId: project.id, apiKey: project.apiKey });
+    } else {
+      logger.info('✅ Project already exists', { projectId: project.id, apiKey: project.apiKey });
+    }
 
     // Test 4: Check Credits
     logger.info('Test 4: Verifying credit balance...');
