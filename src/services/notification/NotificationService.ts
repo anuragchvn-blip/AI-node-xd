@@ -100,6 +100,19 @@ export class NotificationService {
   }
 
   /**
+   * Strip ANSI color codes and control characters from text
+   */
+  private stripAnsiCodes(text: string): string {
+    if (!text) return text;
+    // Remove ANSI escape sequences
+    return text
+      .replace(/\x1b\[[0-9;]*m/g, '') // ANSI color codes
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // Other ANSI sequences
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Control characters
+      .replace(/�/g, ''); // Replacement character
+  }
+
+  /**
    * Generate detailed markdown report
    */
   private generateMarkdownReport(payload: NotificationPayload): string {
@@ -129,14 +142,16 @@ export class NotificationService {
       similarPatternsSection = '**No similar patterns found.** This appears to be a new type of failure.';
     }
     
-    // Build failure details section
-    const failureDetails = payload.failureLogs || payload.failureMessage;
+    // Build failure details section - strip ANSI codes
+    const rawFailureDetails = payload.failureLogs || payload.failureMessage;
+    const failureDetails = this.stripAnsiCodes(rawFailureDetails);
     
-    // Build git diff section
+    // Build git diff section - strip ANSI codes
     let gitDiffSection = '_No git diff available_';
     if (payload.gitDiff) {
-      const truncatedDiff = payload.gitDiff.substring(0, 3000);
-      const diffTruncated = payload.gitDiff.length > 3000;
+      const cleanDiff = this.stripAnsiCodes(payload.gitDiff);
+      const truncatedDiff = cleanDiff.substring(0, 3000);
+      const diffTruncated = cleanDiff.length > 3000;
       gitDiffSection = '```diff\n' + truncatedDiff + (diffTruncated ? '\n... (diff truncated)' : '') + '\n```';
     }
     
