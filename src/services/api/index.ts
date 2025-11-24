@@ -167,6 +167,12 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
       },
     });
     
+    // Get updated credits before sending notification
+    const updatedOrg = await prisma.organization.findUnique({
+      where: { id: project.orgId },
+      select: { creditsBalance: true },
+    });
+    
     // Send Slack notification (if webhook configured)
     const slackWebhook = process.env.SLACK_WEBHOOK_URL;
     if (slackWebhook) {
@@ -179,8 +185,12 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
           failureMessage: failedTests[0].errorMessage,
           aiAnalysis: analysis,
           recommendations: similarPatterns.length > 0 
-            ? [`Similar failure found ${similarPatterns.length} time(s) before`]
-            : ['This is a new failure pattern']
+            ? [`Similar failure found ${similarPatterns.length} time(s) before`, 'Review previous fixes for guidance']
+            : ['This is a new failure pattern', 'No similar issues found in history'],
+          creditsUsed: 1,
+          creditsRemaining: updatedOrg?.creditsBalance || 0,
+          similarPatterns: similarPatterns.length,
+          vectorDimensions: embedding.length
         });
         logger.info('Slack notification sent successfully');
       } catch (error: any) {
@@ -227,12 +237,6 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
           cost: 1,
         },
       });
-    });
-    
-    // Get updated credits
-    const updatedOrg = await prisma.organization.findUnique({
-      where: { id: project.orgId },
-      select: { creditsBalance: true },
     });
     
     logger.info('Report processed inline successfully', { testRunId });

@@ -10,9 +10,18 @@ export interface NotificationPayload {
   aiAnalysis: string;
   recommendations: string[];
   dashboardUrl?: string;
+  creditsUsed?: number;
+  creditsRemaining?: number;
+  similarPatterns?: number;
+  vectorDimensions?: number;
 }
 
 export class NotificationService {
+  private truncateText(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+  }
+
   /**
    * Send Slack notification
    */
@@ -34,29 +43,50 @@ export class NotificationService {
               { type: 'mrkdwn', text: `*Project:*\n${payload.projectName}` },
               { type: 'mrkdwn', text: `*Branch:*\n${payload.branch}` },
               { type: 'mrkdwn', text: `*Commit:*\n\`${payload.commitHash.substring(0, 8)}\`` },
-              { type: 'mrkdwn', text: `*Author:*\n${payload.author}` },
+              { type: 'mrkdwn', text: `*Author:*\n${payload.author.split('@')[0]}` },
             ],
           },
           {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*Error:*\n\`\`\`${payload.failureMessage.substring(0, 200)}\`\`\``,
-            },
+            type: 'divider',
           },
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*🤖 AI Analysis:*\n${payload.aiAnalysis.substring(0, 500)}`,
+              text: `*❌ Error:*\n\`\`\`${payload.failureMessage.substring(0, 150)}...\`\`\``,
             },
+          },
+          {
+            type: 'divider',
           },
           {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*📋 Recommended Tests:*\n${payload.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}`,
+              text: `*🤖 AI Analysis:*\n${this.truncateText(payload.aiAnalysis, 600)}`,
             },
+          },
+          {
+            type: 'divider',
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*📋 Recommendations:*\n${payload.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n') || '• This is a new failure pattern'}`,
+            },
+          },
+          {
+            type: 'divider',
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: `🔍 *Similar Patterns:* ${payload.similarPatterns || 0} | 💰 *Credits Used:* ${payload.creditsUsed || 0} | 💳 *Credits Remaining:* ${payload.creditsRemaining || 0} | 🧬 *Vector Dims:* ${payload.vectorDimensions || 1536}`,
+              },
+            ],
           },
         ],
       };
