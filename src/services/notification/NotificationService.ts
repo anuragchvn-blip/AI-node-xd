@@ -147,7 +147,7 @@ ${payload.failureLogs ? `\`\`\`\n${payload.failureLogs}\n\`\`\`` : `\`\`\`\n${pa
 
 ## 🔍 Similar Patterns Found
 
-${payload.similarPatterns > 0 
+${(payload.similarPatterns || 0) > 0 
   ? `Found **${payload.similarPatterns}** similar failure pattern(s) in history.\n\n${payload.similarPatternsDetails?.map((p: any, i: number) => 
       `### Pattern ${i + 1}\n- **Similarity:** ${p.similarity}%\n- **Summary:** ${p.summary}\n- **Date:** ${new Date(p.timestamp).toLocaleString()}`
     ).join('\n\n') || ''}`
