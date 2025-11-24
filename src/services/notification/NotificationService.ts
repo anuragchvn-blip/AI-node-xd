@@ -122,7 +122,7 @@ export class NotificationService {
   }
 
   /**
-   * Parse test failures into clean structured format
+   * Parse test failures into clean structured format (VS Code style)
    */
   private parseFailureLogs(logs: string): Array<{test: string, error: string}> {
     const failures: Array<{test: string, error: string}> = [];
@@ -131,21 +131,31 @@ export class NotificationService {
     const sections = logs.split(/[-]{10,}/);
     
     sections.forEach(section => {
-      const cleaned = this.stripAnsiCodes(section).trim();
-      if (!cleaned) return;
+      const cleaned = this.stripAnsiCodes(section);
+      if (!cleaned || !cleaned.trim()) return;
       
-      // Extract test name and error
-      const lines = cleaned.split('\n').filter(l => l.trim());
-      if (lines.length > 0) {
-        const testName = lines[0];
-        const errorLines = lines.slice(1).join('\n');
-        
-        if (testName && errorLines) {
-          failures.push({
-            test: testName,
-            error: errorLines
-          });
-        }
+      // Split into lines and preserve empty lines for structure
+      const lines = cleaned.split('\n');
+      
+      // First non-empty line is test name
+      const firstLine = lines.find(l => l.trim());
+      if (!firstLine) return;
+      
+      const testName = firstLine.trim();
+      
+      // Rest is error - preserve blank lines for readability
+      const errorStart = lines.indexOf(firstLine) + 1;
+      const errorLines = lines
+        .slice(errorStart)
+        .map(line => line.trimEnd()) // Remove trailing spaces but keep structure
+        .join('\n')
+        .trim();
+      
+      if (testName && errorLines) {
+        failures.push({
+          test: testName,
+          error: errorLines
+        });
       }
     });
     
@@ -163,44 +173,26 @@ export class NotificationService {
     const rawFailureDetails = payload.failureLogs || payload.failureMessage;
     const parsedFailures = this.parseFailureLogs(rawFailureDetails);
     
-    // Build failure details section with proper formatting and line wrapping
+    // Build failure details section with VS Code-style formatting
     let failureDetailsSection = '';
     if (parsedFailures.length > 0) {
       failureDetailsSection = parsedFailures.map((failure, i) => {
-        // Wrap long lines in error messages
-        const wrappedError = failure.error
+        // Clean and preserve structure like VS Code
+        const formattedError = failure.error
           .split('\n')
-          .map(line => {
-            if (line.length > 100) {
-              const wrapped: string[] = [];
-              for (let i = 0; i < line.length; i += 100) {
-                wrapped.push(line.substring(i, i + 100));
-              }
-              return wrapped.join('\n');
-            }
-            return line;
-          })
+          .map(line => line.trimEnd()) // Remove trailing whitespace but keep indentation
           .join('\n');
         
-        return `### Test ${i + 1}: ${failure.test}\n\n\`\`\`\n${wrappedError}\n\`\`\``;
+        return `### Test ${i + 1}: ${failure.test}\n\n\`\`\`text\n${formattedError}\n\`\`\``;
       }).join('\n\n');
     } else {
-      // Fallback to cleaned raw logs with wrapping
+      // Fallback to cleaned raw logs
       const cleaned = this.stripAnsiCodes(rawFailureDetails);
-      const wrapped = cleaned
+      const formatted = cleaned
         .split('\n')
-        .map(line => {
-          if (line.length > 100) {
-            const parts: string[] = [];
-            for (let i = 0; i < line.length; i += 100) {
-              parts.push(line.substring(i, i + 100));
-            }
-            return parts.join('\n');
-          }
-          return line;
-        })
+        .map(line => line.trimEnd())
         .join('\n');
-      failureDetailsSection = `\`\`\`\n${wrapped}\n\`\`\``;
+      failureDetailsSection = `\`\`\`text\n${formatted}\n\`\`\``;
     }
     
     // Build recommendations section
@@ -231,31 +223,23 @@ export class NotificationService {
       similarPatternsSection = '_No similar patterns found. This is a new failure type._';
     }
     
-    // Build git diff section with proper formatting
+    // Build git diff section with VS Code-style formatting
     let gitDiffSection = '_No git diff available_';
     if (payload.gitDiff) {
       const cleanDiff = this.stripAnsiCodes(payload.gitDiff);
       
-      // Ensure proper line breaks in diff
+      // Format like VS Code - preserve structure, clean up whitespace
       const formattedDiff = cleanDiff
         .split('\n')
-        .map(line => {
-          // Wrap extremely long lines
-          if (line.length > 120) {
-            const wrapped: string[] = [];
-            for (let i = 0; i < line.length; i += 120) {
-              wrapped.push(line.substring(i, i + 120));
-            }
-            return wrapped.join('\n');
-          }
-          return line;
-        })
+        .map(line => line.trimEnd()) // Keep indentation, remove trailing spaces
+        .filter(line => line.length <= 200) // Remove extremely long lines
         .join('\n');
       
+      // Limit total length
       const truncated = formattedDiff.substring(0, 2500);
       const wasTruncated = formattedDiff.length > 2500;
       
-      gitDiffSection = '```diff\n' + truncated + (wasTruncated ? '\n\n... (diff truncated for brevity)' : '') + '\n```';
+      gitDiffSection = '```diff\n' + truncated + (wasTruncated ? '\n\n... (truncated)' : '') + '\n```';
     }
     
     return `# 🚨 CI Failure Analysis Report
