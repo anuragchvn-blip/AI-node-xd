@@ -29,9 +29,6 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Generate Prisma Client
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
-          DIRECT_DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
         run: npx prisma generate
 
       - name: Build project
@@ -39,7 +36,7 @@ jobs:
 
       - name: Setup test database
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}?pgbouncer=true
           DIRECT_DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
         run: |
           echo "🔧 Setting up test database..."
@@ -50,7 +47,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}?pgbouncer=true
           DIRECT_DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
