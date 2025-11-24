@@ -109,7 +109,25 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
     
     logger.info('Processing report inline (queue disabled)');
     
-    const failedTests = payload.failedTests || [];
+    // Handle both failedTests array and failureLogs string
+    let failedTests = payload.failedTests || [];
+    let failureLogs = payload.failureLogs || '';
+    
+    // If failureLogs is provided but failedTests is empty, parse it
+    if (failedTests.length === 0 && failureLogs) {
+      // Parse failureLogs into failedTests format
+      const logLines = failureLogs.split('\n\n');
+      failedTests = logLines.map(log => {
+        const testMatch = log.match(/Test: (.+)/);
+        const errorMatch = log.match(/Error: (.+)/s);
+        return {
+          testName: testMatch ? testMatch[1] : 'Unknown Test',
+          errorMessage: errorMatch ? errorMatch[1] : log,
+          stackTrace: log
+        };
+      });
+    }
+    
     if (failedTests.length === 0) {
       return res.status(400).json({ error: 'No failed tests provided' });
     }
@@ -118,8 +136,10 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
     const vectorStore = new VectorStoreService();
     const notificationService = new NotificationService();
     
-    // AI Analysis
-    const failureLogs = failedTests.map(t => `${t.testName}: ${t.errorMessage}`).join('\n');
+    // AI Analysis - use failureLogs if available, otherwise construct from failedTests
+    if (!failureLogs) {
+      failureLogs = failedTests.map(t => `${t.testName}: ${t.errorMessage}`).join('\n');
+    }
     const analysis = await vectorStore.analyzeFailure({
       failureLogs,
       gitDiff: payload.gitDiff || 'No git diff provided'
