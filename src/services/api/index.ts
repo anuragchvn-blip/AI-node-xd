@@ -103,20 +103,84 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
 
     const testRunId = uuidv4();
 
-    // Push to Queue
-    const job = await addReportJob({
-      projectId: project.id,
-      testRunId,
-      ...payload
+    // Import services for inline processing
+    const { VectorStoreService } = await import('../api/VectorStoreService');
+    const { NotificationService } = await import('../notification/NotificationService');
+    
+    logger.info('Processing report inline (queue disabled)');
+    
+    // Inline processing
+    const vectorStore = new VectorStoreService();
+    const notificationService = new NotificationService();
+    
+    // AI Analysis
+    const analysis = await vectorStore.analyzeFailure(payload.failures);
+    
+    // Generate vector embedding
+    const embedding = await vectorStore.generateEmbedding(JSON.stringify(payload.failures));
+    
+    // Search for similar patterns
+    const similarPatterns = await vectorStore.searchSimilarPatterns(embedding, project.id);
+    
+    // Store pattern
+    await prisma.failurePattern.create({
+      data: {
+        id: testRunId,
+        projectId: project.id,
+        summary: analysis.substring(0, 500),
+        errorMessage: payload.failures[0]?.error || 'Unknown error',
+        stackTrace: payload.failures[0]?.stackTrace,
+        affectedFiles: payload.failures.map((f: any) => f.test || ''),
+        testName: payload.failures[0]?.test,
+        embedding: `[${embedding.join(',')}]`,
+      },
     });
-
-    logger.info('Report Queued', { jobId: job.id, testRunId, projectId: project.id });
-
-    res.status(202).json({
-      status: 'accepted',
-      jobId: job.id,
+    
+    // Send Slack notification
+    await notificationService.sendSlackNotification({
       testRunId,
-      message: 'Report queued for analysis'
+      analysis,
+      similarPatterns: similarPatterns.length,
+    });
+    
+    // Deduct credits
+    await prisma.$transaction(async (tx) => {
+      await tx.organization.update({
+        where: { id: project.orgId },
+        data: { creditsBalance: { decrement: 1 } },
+      });
+      
+      await tx.usageLog.create({
+        data: {
+          projectId: project.id,
+          actionType: 'ai_analysis',
+          cost: 1,
+        },
+      });
+    });
+    
+    // Get updated credits
+    const updatedOrg = await prisma.organization.findUnique({
+      where: { id: project.orgId },
+      select: { creditsBalance: true },
+    });
+    
+    logger.info('Report processed inline successfully', { testRunId });
+    
+    res.json({
+      status: 'processed',
+      testRunId,
+      analysis,
+      similarPatterns: similarPatterns.length,
+      similarPatternsDetails: similarPatterns.map((p: any) => ({
+        id: p.id,
+        similarity: `${(p.similarity * 100).toFixed(1)}%`,
+        summary: p.summary
+      })),
+      creditsUsed: 1,
+      creditsRemaining: updatedOrg?.creditsBalance || 0,
+      vectorEmbeddingDimensions: embedding.length,
+      message: 'Analysis complete with AI, vector search, and billing'
     });
 
   } catch (error: any) {
