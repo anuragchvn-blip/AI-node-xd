@@ -74,10 +74,18 @@ export class NotificationService {
         }
       );
 
-      logger.info('GitHub Gist created', { url: response.data.html_url });
+      logger.info('GitHub Gist created successfully', { 
+        url: response.data.html_url,
+        gistId: response.data.id 
+      });
       return response.data.html_url;
-    } catch (error) {
-      logger.error('Failed to create GitHub Gist', { error });
+    } catch (error: any) {
+      logger.error('Failed to create GitHub Gist', { 
+        error: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      });
       return null;
     }
   }
@@ -243,20 +251,27 @@ ${payload.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
         );
         
         if (gistUrl) {
-          // Add button to view full report
+          // Add divider
           message.blocks.push({
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `📄 *Full detailed report available*`
-            },
-            accessory: {
-              type: 'button',
-              text: { type: 'plain_text', text: 'View Full Report' },
-              url: gistUrl,
-              style: 'primary'
-            }
+            type: 'divider'
           } as any);
+          
+          // Add button with actions block to view full report
+          message.blocks.push({
+            type: 'actions',
+            elements: [
+              {
+                type: 'button',
+                text: { type: 'plain_text', text: '📄 View Full Report', emoji: true },
+                url: gistUrl,
+                style: 'primary'
+              }
+            ]
+          } as any);
+          
+          logger.info('Gist link added to Slack message', { gistUrl });
+        } else {
+          logger.warn('Gist creation failed, link not added to Slack message');
         }
       }
 
