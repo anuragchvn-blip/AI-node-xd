@@ -109,18 +109,30 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
     
     logger.info('Processing report inline (queue disabled)');
     
+    const failedTests = payload.failedTests || [];
+    if (failedTests.length === 0) {
+      return res.status(400).json({ error: 'No failed tests provided' });
+    }
+    
     // Inline processing
     const vectorStore = new VectorStoreService();
     const notificationService = new NotificationService();
     
     // AI Analysis
-    const analysis = await vectorStore.analyzeFailure(payload.failures);
+    const failureLogs = failedTests.map(t => `${t.testName}: ${t.errorMessage}`).join('\n');
+    const analysis = await vectorStore.analyzeFailure({
+      failureLogs,
+      gitDiff: payload.gitDiff || 'No git diff provided'
+    });
     
     // Generate vector embedding
-    const embedding = await vectorStore.generateEmbedding(JSON.stringify(payload.failures));
+    const embedding = await vectorStore.generateEmbedding(failureLogs);
     
     // Search for similar patterns
-    const similarPatterns = await vectorStore.searchSimilarPatterns(embedding, project.id);
+    const similarPatterns = await vectorStore.searchSimilarPatterns({
+      projectId: project.id,
+      embedding
+    });
     
     // Store pattern
     await prisma.failurePattern.create({
@@ -128,20 +140,26 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
         id: testRunId,
         projectId: project.id,
         summary: analysis.substring(0, 500),
-        errorMessage: payload.failures[0]?.error || 'Unknown error',
-        stackTrace: payload.failures[0]?.stackTrace,
-        affectedFiles: payload.failures.map((f: any) => f.test || ''),
-        testName: payload.failures[0]?.test,
-        embedding: `[${embedding.join(',')}]`,
+        errorMessage: failedTests[0].errorMessage,
+        stackTrace: failedTests[0].stackTrace,
+        affectedFiles: [failedTests[0].testName],
+        testName: failedTests[0].testName,
       },
     });
     
-    // Send Slack notification
-    await notificationService.sendSlackNotification({
-      testRunId,
-      analysis,
-      similarPatterns: similarPatterns.length,
-    });
+    // Send Slack notification (if webhook configured)
+    const slackWebhook = process.env.SLACK_WEBHOOK_URL;
+    if (slackWebhook) {
+      await notificationService.sendSlackNotification(slackWebhook, {
+        projectName: 'CI System',
+        commitHash: payload.commitHash || 'unknown',
+        branch: payload.branch || 'unknown',
+        author: payload.author || 'unknown',
+        failureMessage: failedTests[0].errorMessage,
+        aiAnalysis: analysis.substring(0, 200),
+        recommendations: []
+      });
+    }
     
     // Deduct credits
     await prisma.$transaction(async (tx) => {
@@ -188,8 +206,8 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
       logger.warn('Validation Error', { errors: error.errors });
       return res.status(400).json({ error: 'Validation failed', details: error.errors });
     }
-    logger.error('Report submission failed', { error });
-    res.status(500).json({ error: 'Failed to submit report' });
+    logger.error('Report submission failed', { error: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Failed to submit report', details: error.message });
   }
 });
 
