@@ -53,21 +53,23 @@ const authenticate = async (req: Request, res: Response, next: NextFunction) => 
   }
 
   try {
+    logger.info('Authenticating request', { apiKey: apiKey as string });
     const project = await prisma.project.findUnique({
       where: { apiKey: apiKey as string },
       select: { id: true, orgId: true },
     });
 
     if (!project) {
-      logger.warn('Invalid API Key', { apiKey, ip: req.ip });
+      logger.warn('Invalid API Key - project not found', { apiKey, ip: req.ip });
       return res.status(401).json({ error: 'Invalid API Key' });
     }
 
+    logger.info('Authentication successful', { projectId: project.id, orgId: project.orgId });
     (req as any).project = project;
     next();
-  } catch (error) {
-    logger.error('Auth DB Error', { error });
-    res.status(500).json({ error: 'Authentication failed' });
+  } catch (error: any) {
+    logger.error('Auth DB Error', { error: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Authentication failed', details: error.message });
   }
 };
 
