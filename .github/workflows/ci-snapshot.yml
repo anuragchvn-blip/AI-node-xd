@@ -25,8 +25,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright Browsers
+      - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
+
+      - name: Generate Prisma Client
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
+          DIRECT_DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
+        run: npx prisma generate
 
       - name: Build project
         run: npm run build
@@ -37,7 +43,6 @@ jobs:
           DIRECT_DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
         run: |
           echo "🔧 Setting up test database..."
-          npx prisma generate
           npx ts-node test-setup.ts
           echo "✅ Database setup complete"
 
