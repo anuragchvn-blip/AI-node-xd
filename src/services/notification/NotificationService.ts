@@ -22,6 +22,25 @@ export class NotificationService {
     return text.substring(0, maxLength) + '...';
   }
 
+  private formatAnalysisForSlack(text: string): string {
+    // Convert markdown to Slack formatting
+    let formatted = text
+      .replace(/\*\*([^*]+)\*\*/g, '*$1*')  // **bold** to *bold*
+      .replace(/^### (.+)$/gm, '\n*$1*')    // ### Header to *Header*
+      .replace(/^## (.+)$/gm, '\n*$1*')     // ## Header to *Header*
+      .replace(/^# (.+)$/gm, '\n*$1*')      // # Header to *Header*
+      .replace(/^\* (.+)$/gm, '• $1')       // * item to • item
+      .replace(/^- (.+)$/gm, '• $1')        // - item to • item
+      .replace(/`([^`]+)`/g, '`$1`');       // keep code blocks
+    
+    // Truncate if needed
+    if (formatted.length > 2800) {
+      formatted = formatted.substring(0, 2800) + '\n\n_...truncated. See full analysis in logs._';
+    }
+    
+    return formatted;
+  }
+
   /**
    * Send Slack notification
    */
@@ -63,7 +82,7 @@ export class NotificationService {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: `*🤖 AI Analysis:*\n${this.truncateText(payload.aiAnalysis, 600)}`,
+              text: `*🤖 AI Analysis:*\n${this.formatAnalysisForSlack(payload.aiAnalysis)}`,
             },
           },
           {
