@@ -50,9 +50,9 @@ export class NotificationService {
     filename: string
   ): Promise<string | null> {
     try {
-      const githubToken = process.env.GITHUB_TOKEN;
+      const githubToken = process.env.GIST_TOKEN;
       if (!githubToken) {
-        logger.warn('GITHUB_TOKEN not found, cannot create Gist');
+        logger.warn('GIST_TOKEN not found, cannot create Gist');
         return null;
       }
 

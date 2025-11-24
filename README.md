@@ -103,7 +103,7 @@ See `.env.example` for all configuration options. Key variables:
 - `OPENAI_API_KEY`: For generating embeddings
 - `GROQ_API_KEY`: For AI analysis using Groq (llama-3.3-70b)
 - `SLACK_WEBHOOK_URL`: Slack webhook for notifications
-- `GITHUB_TOKEN`: For PR comments and creating Gists with full reports
+- `GIST_TOKEN`: GitHub personal access token for creating Gists with full reports
 - `API_SECRET_KEY`: Authentication for API calls
 - `SIMILARITY_THRESHOLD`: Minimum similarity score (default: 0.85)
 - `ARTIFACT_RETENTION_DAYS`: How long to keep snapshots (default: 30)
