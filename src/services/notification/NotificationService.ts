@@ -131,7 +131,7 @@ ${payload.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
   }
 
   /**
-   * Send email notification (using a service like SendGrid, Mailgun, etc.)
+   * Send email notification using SendGrid
    */
   async sendEmailNotification(
     to: string,
@@ -139,30 +139,64 @@ ${payload.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
     payload: NotificationPayload
   ): Promise<void> {
     try {
-      // Example using SendGrid
       const emailBody = `
-        <h2>🚨 CI Failure Detected</h2>
-        <p><strong>Project:</strong> ${payload.projectName}</p>
-        <p><strong>Commit:</strong> ${payload.commitHash}</p>
-        <p><strong>Branch:</strong> ${payload.branch}</p>
-        <p><strong>Author:</strong> ${payload.author}</p>
-        
-        <h3>Error</h3>
-        <pre>${payload.failureMessage}</pre>
-        
-        <h3>🤖 AI Analysis</h3>
-        <p>${payload.aiAnalysis}</p>
-        
-        <h3>📋 Recommended Tests</h3>
-        <ul>
-          ${payload.recommendations.map(r => `<li>${r}</li>`).join('')}
-        </ul>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #e74c3c;">🚨 CI Failure Detected</h2>
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+            <p><strong>Project:</strong> ${payload.projectName}</p>
+            <p><strong>Commit:</strong> <code>${payload.commitHash}</code></p>
+            <p><strong>Branch:</strong> ${payload.branch}</p>
+            <p><strong>Author:</strong> ${payload.author}</p>
+          </div>
+          
+          <h3 style="color: #e74c3c;">❌ Error</h3>
+          <pre style="background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto;">${payload.failureMessage}</pre>
+          
+          <h3 style="color: #3498db;">🤖 AI Analysis</h3>
+          <div style="background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 15px 0;">
+            ${payload.aiAnalysis.split('\n').map(line => `<p>${line}</p>`).join('')}
+          </div>
+          
+          <h3 style="color: #27ae60;">📋 Recommendations</h3>
+          <ul style="background: #e8f8f5; padding: 15px; border-radius: 5px;">
+            ${payload.recommendations.map(r => `<li>${r}</li>`).join('')}
+          </ul>
+          
+          ${payload.dashboardUrl ? `
+            <div style="text-align: center; margin: 20px 0;">
+              <a href="${payload.dashboardUrl}" style="background: #3498db; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                View Dashboard
+              </a>
+            </div>
+          ` : ''}
+          
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+          <p style="color: #7f8c8d; font-size: 12px; text-align: center;">
+            Powered by CI Snapshot AI
+          </p>
+        </div>
       `;
 
-      // This is a placeholder - you'd integrate with your email service
-      logger.info('Email notification would be sent', { to, commit: payload.commitHash });
+      // SendGrid API call
+      await axios.post(
+        'https://api.sendgrid.com/v3/mail/send',
+        {
+          personalizations: [{ to: [{ email: to }] }],
+          from: { email: process.env.NOTIFICATION_FROM_EMAIL || 'noreply@ci-system.com', name: 'CI Snapshot System' },
+          subject: `🚨 CI Failure: ${payload.projectName} - ${payload.branch}`,
+          content: [{ type: 'text/html', value: emailBody }],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      logger.info('Email notification sent', { to, commit: payload.commitHash });
     } catch (error: any) {
-      logger.error('Email notification failed', { error: error.message });
+      logger.error('Email notification failed', { error: error.message, response: error.response?.data });
     }
   }
 }

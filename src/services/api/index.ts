@@ -170,15 +170,47 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
     // Send Slack notification (if webhook configured)
     const slackWebhook = process.env.SLACK_WEBHOOK_URL;
     if (slackWebhook) {
-      await notificationService.sendSlackNotification(slackWebhook, {
-        projectName: 'CI System',
-        commitHash: payload.commitHash || 'unknown',
-        branch: payload.branch || 'unknown',
-        author: payload.author || 'unknown',
-        failureMessage: failedTests[0].errorMessage,
-        aiAnalysis: analysis.substring(0, 200),
-        recommendations: []
-      });
+      try {
+        await notificationService.sendSlackNotification(slackWebhook, {
+          projectName: project.repoUrl || 'CI System',
+          commitHash: payload.commitHash || 'unknown',
+          branch: payload.branch || 'unknown',
+          author: payload.author || 'unknown',
+          failureMessage: failedTests[0].errorMessage,
+          aiAnalysis: analysis,
+          recommendations: similarPatterns.length > 0 
+            ? [`Similar failure found ${similarPatterns.length} time(s) before`]
+            : ['This is a new failure pattern']
+        });
+        logger.info('Slack notification sent successfully');
+      } catch (error: any) {
+        logger.error('Slack notification failed', { error: error.message });
+      }
+    }
+    
+    // Send email to author (if configured)
+    const sendgridApiKey = process.env.SENDGRID_API_KEY;
+    if (sendgridApiKey && payload.author) {
+      try {
+        await notificationService.sendEmailNotification(
+          payload.author,
+          sendgridApiKey,
+          {
+            projectName: project.repoUrl || 'CI System',
+            commitHash: payload.commitHash || 'unknown',
+            branch: payload.branch || 'unknown',
+            author: payload.author,
+            failureMessage: failedTests[0].errorMessage,
+            aiAnalysis: analysis,
+            recommendations: similarPatterns.length > 0 
+              ? [`Similar failure found ${similarPatterns.length} time(s) before`]
+              : ['This is a new failure pattern']
+          }
+        );
+        logger.info('Email notification sent to author', { author: payload.author });
+      } catch (error: any) {
+        logger.error('Email notification failed', { error: error.message });
+      }
     }
     
     // Deduct credits
