@@ -19,12 +19,22 @@ async function sendFinalReport() {
     playwrightFailures.forEach(f => {
       allFailures.push(`[E2E Test] ${f.test}\nError: ${f.error}`);
     });
+  } else {
+    console.log('✓ No Playwright failures found');
   }
 
-  // 2. Check Backend Integration test failures from Jest output
-  // Jest writes to stderr, we'll check exit code via CI or parse test results
-  // For now, we'll just note if backend tests ran
-  console.log('✓ Backend integration tests completed\n');
+  // 2. Check Backend Integration test failures
+  if (fs.existsSync('backend-test-failures.json')) {
+    const backendFailures = JSON.parse(fs.readFileSync('backend-test-failures.json', 'utf8'));
+    console.log(`✓ Found ${backendFailures.length} Backend Integration failure(s)`);
+    backendFailures.forEach(f => {
+      allFailures.push(`[Backend Integration] ${f.test}\nError: ${f.error}`);
+    });
+  } else {
+    console.log('✓ No Backend Integration failures found');
+  }
+
+  console.log('');
 
   if (allFailures.length === 0) {
     console.log('✅ All tests passed! No failures to analyze.\n');

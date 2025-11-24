@@ -3,4 +3,8 @@ module.exports = {
   testEnvironment: 'node',
   testMatch: ['**/*.test.ts'],
   testTimeout: 30000,
+  reporters: [
+    'default',
+    '<rootDir>/backend-failure-reporter.js'
+  ],
 };
