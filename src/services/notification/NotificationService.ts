@@ -33,9 +33,9 @@ export class NotificationService {
       .replace(/^- (.+)$/gm, '• $1')        // - item to • item
       .replace(/`([^`]+)`/g, '`$1`');       // keep code blocks
     
-    // Truncate if needed
-    if (formatted.length > 2800) {
-      formatted = formatted.substring(0, 2800) + '\n\n_...truncated. See full analysis in logs._';
+    // Strict truncation to prevent Slack API errors
+    if (formatted.length > 1500) {
+      formatted = formatted.substring(0, 1500) + '\n\n_[Truncated for length - see logs]_';
     }
     
     return formatted;

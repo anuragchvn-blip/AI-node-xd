@@ -210,26 +210,32 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
     const extractRecommendations = (aiAnalysis: string): string[] => {
       const recommendations: string[] = [];
       
-      // Extract specific fix section
-      const fixMatch = aiAnalysis.match(/\*\*Specific fix:\*\*(.*?)(?=\*\*|$)/s);
+      // Extract fix section (handle both formats)
+      const fixMatch = aiAnalysis.match(/\*\*(?:Specific )?Fix:\*\*(.*?)(?=\*\*|$)/si);
       if (fixMatch && fixMatch[1]) {
-        const fixText = fixMatch[1].trim().substring(0, 200);
-        if (fixText) recommendations.push(`Fix: ${fixText}`);
+        const fixes = fixMatch[1].trim()
+          .split(/\n\d+\.|\n-/)
+          .filter(f => f.trim())
+          .slice(0, 2); // Only first 2 fixes
+        
+        fixes.forEach(fix => {
+          const cleanFix = fix.trim().substring(0, 100);
+          if (cleanFix) recommendations.push(cleanFix);
+        });
       }
       
       // Add similarity info
       if (similarPatterns.length > 0) {
-        recommendations.push(`⚠️ Similar failure occurred ${similarPatterns.length} time(s) before - check previous solutions`);
-      } else {
-        recommendations.push('ℹ️ This is a new failure pattern');
+        recommendations.push(`Similar issue found ${similarPatterns.length}x before`);
       }
       
-      // Fallback if no recommendations
+      // Fallback
       if (recommendations.length === 0) {
-        recommendations.push('Review the AI analysis above for detailed fix instructions');
+        recommendations.push('Review AI analysis above');
+        recommendations.push(similarPatterns.length === 0 ? 'New failure pattern' : 'Check similar patterns');
       }
       
-      return recommendations;
+      return recommendations.slice(0, 3); // Max 3 recommendations
     };
     
     // Send Slack notification (if webhook configured AND not from test)

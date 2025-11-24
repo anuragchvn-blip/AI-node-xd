@@ -50,36 +50,27 @@ export class VectorStoreService {
   }, retries = 3): Promise<string> {
     const { failureLogs, gitDiff } = params;
 
-    const prompt = `You are an expert Senior DevOps/QA Engineer with deep knowledge of CI/CD pipelines, test automation, and debugging. 
+    const prompt = `You are an expert DevOps Engineer analyzing CI test failures.
 
-Analyze this CI test failure comprehensively:
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FAILURE LOGS:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${failureLogs.substring(0, 4000)}
+${failureLogs.substring(0, 3000)}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-GIT CHANGES (RECENT COMMIT):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${gitDiff.substring(0, 3000)}
+GIT CHANGES:
+${gitDiff.substring(0, 2000)}
 
-Provide a detailed analysis in this exact format:
+Provide concise analysis in this format:
 
-**Failure Analysis:**
+**Root Cause:**
+Brief explanation of why it failed (2-3 sentences max)
 
-1. **Why it failed:** Provide a clear, technical explanation of the root cause. Identify which specific code change, configuration, or environment issue caused the failure.
+**Fix:**
+1. Specific action to take
+2. Code change if needed
+3. Command to run if applicable
 
-2. **Specific fix:** Give actionable, step-by-step instructions to fix the issue. Include exact code changes, commands, or configuration updates needed.
+**Confidence:** X%
 
-3. **Confidence rating:** X% - Explain your confidence level and reasoning.
-
-**Additional Context:**
-- If this is a test issue vs actual bug
-- If environment/dependencies are involved
-- If this could affect other parts of the system
-
-Be thorough but concise. Focus on actionable insights.`;
+Keep response under 800 characters total. Be direct and actionable.`;
 
     try {
       const completion = await groq.chat.completions.create({
