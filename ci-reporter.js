@@ -3,20 +3,26 @@ const { execSync } = require('child_process');
 
 class CIReporter {
   constructor() {
-    this.failures = [];
+    this.failures = new Map(); // Use Map to deduplicate by test title
   }
 
   onTestEnd(test, result) {
     if (result.status === 'failed') {
-      this.failures.push({
-        test: test.title,
-        error: result.error?.message || result.error?.stack || 'Unknown error',
-      });
+      // Only store the first failure for each unique test (ignoring retries)
+      const testKey = test.titlePath().join(' > ');
+      if (!this.failures.has(testKey)) {
+        this.failures.set(testKey, {
+          test: test.title,
+          error: result.error?.message || result.error?.stack || 'Unknown error',
+        });
+      }
     }
   }
 
   async onEnd(result) {
-    if (result.status === 'passed' || this.failures.length === 0) {
+    const uniqueFailures = Array.from(this.failures.values());
+    
+    if (result.status === 'passed' || uniqueFailures.length === 0) {
       console.log('✅ All tests passed. No CI analysis needed.');
       return;
     }
@@ -24,7 +30,7 @@ class CIReporter {
     console.log(`\n${'='.repeat(80)}`);
     console.log('🚨 TRIGGERING CI ANALYSIS SYSTEM');
     console.log(`${'='.repeat(80)}`);
-    console.log(`Detected ${this.failures.length} test failure(s)\n`);
+    console.log(`Detected ${uniqueFailures.length} unique test failure(s) (retries deduplicated)\n`);
 
     try {
       const commitHash = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
@@ -40,7 +46,7 @@ class CIReporter {
         gitDiff = 'No git diff available';
       }
 
-      const failureLogs = this.failures.map(f => `Test: ${f.test}\nError: ${f.error}`).join('\n\n');
+      const failureLogs = uniqueFailures.map(f => `Test: ${f.test}\nError: ${f.error}`).join('\n\n');
 
       const payload = {
         commitHash,
@@ -55,7 +61,7 @@ class CIReporter {
       console.log(`   Commit: ${commitHash.substring(0, 8)}`);
       console.log(`   Branch: ${branch}`);
       console.log(`   Author: ${author}`);
-      console.log(`   Failures: ${this.failures.length}\n`);
+      console.log(`   Failures: ${uniqueFailures.length}\n`);
 
       const response = await axios.post('http://localhost:3000/api/v1/report', payload, {
         headers: { 'x-api-key': 'sk_test_demo_key_12345' },
