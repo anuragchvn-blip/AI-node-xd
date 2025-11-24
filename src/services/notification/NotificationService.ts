@@ -163,16 +163,44 @@ export class NotificationService {
     const rawFailureDetails = payload.failureLogs || payload.failureMessage;
     const parsedFailures = this.parseFailureLogs(rawFailureDetails);
     
-    // Build failure details section with proper formatting
+    // Build failure details section with proper formatting and line wrapping
     let failureDetailsSection = '';
     if (parsedFailures.length > 0) {
       failureDetailsSection = parsedFailures.map((failure, i) => {
-        return `### Test ${i + 1}: ${failure.test}\n\n\`\`\`\n${failure.error}\n\`\`\``;
+        // Wrap long lines in error messages
+        const wrappedError = failure.error
+          .split('\n')
+          .map(line => {
+            if (line.length > 100) {
+              const wrapped: string[] = [];
+              for (let i = 0; i < line.length; i += 100) {
+                wrapped.push(line.substring(i, i + 100));
+              }
+              return wrapped.join('\n');
+            }
+            return line;
+          })
+          .join('\n');
+        
+        return `### Test ${i + 1}: ${failure.test}\n\n\`\`\`\n${wrappedError}\n\`\`\``;
       }).join('\n\n');
     } else {
-      // Fallback to cleaned raw logs
+      // Fallback to cleaned raw logs with wrapping
       const cleaned = this.stripAnsiCodes(rawFailureDetails);
-      failureDetailsSection = `\`\`\`\n${cleaned}\n\`\`\``;
+      const wrapped = cleaned
+        .split('\n')
+        .map(line => {
+          if (line.length > 100) {
+            const parts: string[] = [];
+            for (let i = 0; i < line.length; i += 100) {
+              parts.push(line.substring(i, i + 100));
+            }
+            return parts.join('\n');
+          }
+          return line;
+        })
+        .join('\n');
+      failureDetailsSection = `\`\`\`\n${wrapped}\n\`\`\``;
     }
     
     // Build recommendations section
@@ -203,13 +231,31 @@ export class NotificationService {
       similarPatternsSection = '_No similar patterns found. This is a new failure type._';
     }
     
-    // Build git diff section
+    // Build git diff section with proper formatting
     let gitDiffSection = '_No git diff available_';
     if (payload.gitDiff) {
       const cleanDiff = this.stripAnsiCodes(payload.gitDiff);
-      const truncated = cleanDiff.substring(0, 2500);
-      const wasTruncated = cleanDiff.length > 2500;
-      gitDiffSection = '```diff\n' + truncated + (wasTruncated ? '\n... (truncated)' : '') + '\n```';
+      
+      // Ensure proper line breaks in diff
+      const formattedDiff = cleanDiff
+        .split('\n')
+        .map(line => {
+          // Wrap extremely long lines
+          if (line.length > 120) {
+            const wrapped: string[] = [];
+            for (let i = 0; i < line.length; i += 120) {
+              wrapped.push(line.substring(i, i + 120));
+            }
+            return wrapped.join('\n');
+          }
+          return line;
+        })
+        .join('\n');
+      
+      const truncated = formattedDiff.substring(0, 2500);
+      const wasTruncated = formattedDiff.length > 2500;
+      
+      gitDiffSection = '```diff\n' + truncated + (wasTruncated ? '\n\n... (diff truncated for brevity)' : '') + '\n```';
     }
     
     return `# 🚨 CI Failure Analysis Report
