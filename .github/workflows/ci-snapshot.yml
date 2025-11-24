@@ -34,6 +34,16 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Run Backend Integration Tests
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}?pgbouncer=true
+          DIRECT_DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          echo "🧪 Running backend integration tests..."
+          npm test -- tests/backend-integration.test.ts
+        continue-on-error: true
+
       - name: Setup test database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}?pgbouncer=true
@@ -58,10 +68,26 @@ jobs:
         run: |
           echo "🚀 Starting API server..."
           node dist/services/api/index.js &
+          API_PID=$!
           sleep 5
-          echo "🏥 Checking API health..."
+          
+          echo "🏥 Performing comprehensive health check..."
+          
+          # Check if process is running
+          if ! kill -0 $API_PID 2>/dev/null; then
+            echo "❌ API server failed to start!"
+            exit 1
+          fi
+          
+          # Check health endpoint
+          HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/health)
+          if [ "$HEALTH_RESPONSE" != "200" ]; then
+            echo "❌ API health check failed! Status: $HEALTH_RESPONSE"
+            exit 1
+          fi
+          
+          echo "✅ API server healthy and ready"
           curl http://localhost:3000/health
-          echo "✅ API server ready"
 
       - name: Run Playwright tests with AI Analysis
         env:

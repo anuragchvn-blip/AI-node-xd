@@ -32,6 +32,39 @@ app.use((req, res, next) => {
   next();
 });
 
+// Global Error Handler - Catches ALL backend errors
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  logger.error('Backend Error', {
+    error: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    body: req.body
+  });
+  
+  // Send Slack alert for critical errors
+  const slackWebhook = process.env.SLACK_WEBHOOK_URL;
+  if (slackWebhook) {
+    import('../notification/NotificationService').then(({ NotificationService }) => {
+      const notificationService = new NotificationService();
+      notificationService.sendSlackNotification(slackWebhook, {
+        projectName: 'Backend API',
+        commitHash: process.env.GITHUB_SHA || 'unknown',
+        branch: process.env.GITHUB_REF || 'unknown',
+        author: 'Backend System',
+        failureMessage: err.message,
+        aiAnalysis: `**Backend Error Detected**\n\n*Endpoint:* ${req.method} ${req.url}\n*Error:* ${err.message}\n*Stack:* ${err.stack?.substring(0, 200)}`,
+        recommendations: ['Check server logs', 'Verify database connection', 'Review recent changes']
+      }).catch(() => {});
+    });
+  }
+  
+  res.status(err.status || 500).json({
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred'
+  });
+});
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -321,6 +354,51 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 const server = app.listen(PORT, () => {
   logger.info(`Ingestion API running on port ${PORT}`);
+});
+
+// Catch uncaught exceptions
+process.on('uncaughtException', (error: Error) => {
+  logger.error('Uncaught Exception', { error: error.message, stack: error.stack });
+  
+  // Send Slack alert
+  const slackWebhook = process.env.SLACK_WEBHOOK_URL;
+  if (slackWebhook) {
+    import('../notification/NotificationService').then(({ NotificationService }) => {
+      const notificationService = new NotificationService();
+      notificationService.sendSlackNotification(slackWebhook, {
+        projectName: 'Backend API - CRITICAL',
+        commitHash: process.env.GITHUB_SHA || 'unknown',
+        branch: process.env.GITHUB_REF || 'unknown',
+        author: 'Backend System',
+        failureMessage: error.message,
+        aiAnalysis: `**💥 Uncaught Exception - Service Crash Risk**\n\n*Error:* ${error.message}\n*Stack:* ${error.stack?.substring(0, 300)}`,
+        recommendations: ['IMMEDIATE ACTION REQUIRED', 'Check server immediately', 'Service may be down']
+      }).catch(() => {});
+    });
+  }
+  
+  process.exit(1);
+});
+
+// Catch unhandled promise rejections
+process.on('unhandledRejection', (reason: any) => {
+  logger.error('Unhandled Promise Rejection', { reason });
+  
+  const slackWebhook = process.env.SLACK_WEBHOOK_URL;
+  if (slackWebhook) {
+    import('../notification/NotificationService').then(({ NotificationService }) => {
+      const notificationService = new NotificationService();
+      notificationService.sendSlackNotification(slackWebhook, {
+        projectName: 'Backend API - WARNING',
+        commitHash: process.env.GITHUB_SHA || 'unknown',
+        branch: process.env.GITHUB_REF || 'unknown',
+        author: 'Backend System',
+        failureMessage: String(reason),
+        aiAnalysis: `**⚠️ Unhandled Promise Rejection**\n\n*Reason:* ${String(reason)}`,
+        recommendations: ['Review async operations', 'Check database queries', 'Verify external API calls']
+      }).catch(() => {});
+    });
+  }
 });
 
 // Graceful Shutdown
