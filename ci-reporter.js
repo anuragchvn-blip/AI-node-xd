@@ -23,7 +23,34 @@ class CIReporter {
     const uniqueFailures = Array.from(this.failures.values());
     
     if (result.status === 'passed' || uniqueFailures.length === 0) {
-      console.log('✅ All tests passed. No CI analysis needed.');
+      console.log('✅ All Playwright tests passed.');
+      return;
+    }
+
+    // Skip immediate reporting if SKIP_CI_REPORT is set (consolidation mode)
+    if (process.env.SKIP_CI_REPORT === 'true') {
+      console.log(`\n⏭️  Skipping immediate CI report - will consolidate with backend tests`);
+      console.log(`   Detected ${uniqueFailures.length} E2E failure(s) for consolidation\n`);
+      
+      // Save failures for consolidation
+      const fs = require('fs');
+      const path = require('path');
+      const resultsDir = path.join(process.cwd(), 'test-results');
+      if (!fs.existsSync(resultsDir)) {
+        fs.mkdirSync(resultsDir, { recursive: true });
+      }
+      
+      fs.writeFileSync(
+        path.join(resultsDir, '.last-run.json'),
+        JSON.stringify({
+          status: result.status,
+          failedTests: uniqueFailures.map(f => ({
+            title: f.test,
+            error: f.error,
+            file: 'e2e/example.spec.ts'
+          }))
+        })
+      );
       return;
     }
 
