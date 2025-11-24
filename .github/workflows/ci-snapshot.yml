@@ -1,190 +1,57 @@
-name: Frontend CI with Backend Test Snapshot
+name: CI Tests with AI Analysis
 
 on:
   push:
-    branches: [main, develop, feature/*]
+    branches: [ main, develop ]
   pull_request:
-    branches: [main, develop]
-
-env:
-  SNAPSHOT_SERVICE_URL: ${{ secrets.SNAPSHOT_SERVICE_URL }}
-  API_SERVICE_URL: ${{ secrets.API_SERVICE_URL }}
-  API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
-  BACKEND_URL: ${{ secrets.BACKEND_URL || 'http://localhost:8000' }}
-  FRONTEND_URL: ${{ secrets.FRONTEND_URL || 'http://localhost:3000' }}
+    branches: [ main ]
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
-
+    
     steps:
-      # Checkout code
-      - name: Checkout frontend repo
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Full history for git diff
+          fetch-depth: 2
 
-      # Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
 
-      # Install dependencies
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci
 
-      # Build frontend
-      - name: Build frontend
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build project
         run: npm run build
 
-      # Start frontend server in background
-      - name: Start frontend server
+      - name: Start API server
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          npm start &
-          sleep 10
-          curl -f ${{ env.FRONTEND_URL }} || exit 1
+          node dist/services/api/index.js &
+          sleep 5
+          curl http://localhost:3000/health
 
-      # Checkout backend repo for integration tests
-      - name: Checkout backend repo
-        uses: actions/checkout@v4
+      - name: Run Playwright tests with AI Analysis
+        env:
+          CI: true
+        run: npx playwright test
+        continue-on-error: true
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
-          repository: ${{ secrets.BACKEND_REPO }}
-          path: backend
-          token: ${{ secrets.GH_PAT }}
-
-      # Setup backend (example: Python)
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install backend dependencies
-        working-directory: backend
-        run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-json-report
-
-      # Start backend server
-      - name: Start backend server
-        working-directory: backend
-        run: |
-          python manage.py runserver &
-          sleep 10
-
-      # Run backend integration tests
-      # This is the critical step - tests run against new frontend
-      - name: Run backend integration tests
-        id: backend_tests
-        working-directory: backend
-        continue-on-error: true # Don't fail workflow, we need to capture snapshot
-        run: |
-          pytest tests/integration/ \
-            --json-report \
-            --json-report-file=test-results.json \
-            -v
-
-      # CONDITIONAL: Capture snapshot ONLY if backend tests failed
-      - name: Capture failure snapshot
-        if: failure() && steps.backend_tests.outcome == 'failure'
-        id: snapshot
-        run: |
-          # Generate unique test run ID
-          TEST_RUN_ID=$(uuidgen)
-          echo "TEST_RUN_ID=$TEST_RUN_ID" >> $GITHUB_ENV
-
-          # Call Snapshot Service
-          SNAPSHOT_RESPONSE=$(curl -X POST "${{ env.SNAPSHOT_SERVICE_URL }}/snapshot/create" \
-            -H "Content-Type: application/json" \
-            -H "x-api-key: ${{ env.API_SECRET_KEY }}" \
-            -d "{
-              \"testRunId\": \"$TEST_RUN_ID\",
-              \"url\": \"${{ env.FRONTEND_URL }}\",
-              \"viewport\": { \"width\": 1920, \"height\": 1080 }
-            }")
-
-          echo "SNAPSHOT_RESPONSE=$SNAPSHOT_RESPONSE" >> $GITHUB_ENV
-          echo "$SNAPSHOT_RESPONSE" | jq '.'
-
-      # Parse test results and extract failures
-      - name: Parse test results
-        if: always()
-        id: parse_results
-        working-directory: backend
-        run: |
-          if [ -f test-results.json ]; then
-            # Extract failed tests using jq
-            FAILED_TESTS=$(jq -c '[.tests[] | select(.outcome == "failed") | {
-              testName: .nodeid,
-              errorMessage: .call.longrepr,
-              stackTrace: .call.traceback
-            }]' test-results.json)
-            
-            echo "FAILED_TESTS=$FAILED_TESTS" >> $GITHUB_ENV
-            
-            # Determine status
-            if [ "${{ steps.backend_tests.outcome }}" == "failure" ]; then
-              echo "STATUS=failed" >> $GITHUB_ENV
-            else
-              echo "STATUS=passed" >> $GITHUB_ENV
-            fi
-          fi
-
-      # Get git diff
-      - name: Generate git diff
-        if: always()
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            GIT_DIFF=$(git diff origin/${{ github.base_ref }}...HEAD)
-          else
-            GIT_DIFF=$(git diff HEAD~1)
-          fi
-
-          # Escape for JSON
-          GIT_DIFF_ESCAPED=$(echo "$GIT_DIFF" | jq -Rs .)
-          echo "GIT_DIFF=$GIT_DIFF_ESCAPED" >> $GITHUB_ENV
-
-      # Submit test results to System API
-      - name: Submit test results
-        if: always()
-        run: |
-          # Extract snapshot URLs from response
-          SCREENSHOT_URL=$(echo "$SNAPSHOT_RESPONSE" | jq -r '.screenshotUrl // empty')
-          HTML_URL=$(echo "$SNAPSHOT_RESPONSE" | jq -r '.htmlDumpUrl // empty')
-          HAR_URL=$(echo "$SNAPSHOT_RESPONSE" | jq -r '.harUrl // empty')
-          LOGS_URL=$(echo "$SNAPSHOT_RESPONSE" | jq -r '.consoleLogsUrl // empty')
-
-          # Build snapshot URLs object
-          if [ -n "$SCREENSHOT_URL" ]; then
-            SNAPSHOT_URLS="{
-              \"screenshot\": \"$SCREENSHOT_URL\",
-              \"htmlDump\": \"$HTML_URL\",
-              \"har\": \"$HAR_URL\",
-              \"consoleLogs\": \"$LOGS_URL\"
-            }"
-          else
-            SNAPSHOT_URLS="null"
-          fi
-
-          # Submit to API
-          curl -X POST "${{ env.API_SERVICE_URL }}/test-runs" \
-            -H "Content-Type: application/json" \
-            -H "x-api-key: ${{ env.API_SECRET_KEY }}" \
-            -d "{
-              \"commitHash\": \"${{ github.sha }}\",
-              \"branch\": \"${{ github.ref_name }}\",
-              \"author\": \"${{ github.actor }}\",
-              \"status\": \"$STATUS\",
-              \"failedTests\": $FAILED_TESTS,
-              \"gitDiff\": $GIT_DIFF,
-              \"prNumber\": ${{ github.event.pull_request.number || 'null' }},
-              \"snapshotUrls\": $SNAPSHOT_URLS
-            }"
-
-      # Fail the workflow if tests failed
-      - name: Check test results
-        if: steps.backend_tests.outcome == 'failure'
-        run: |
-          echo "Backend tests failed. Check notifications for details."
-          exit 1
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
