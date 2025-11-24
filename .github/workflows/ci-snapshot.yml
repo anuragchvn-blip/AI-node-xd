@@ -94,7 +94,7 @@ jobs:
         run: |
           echo "🧪 Running backend integration tests..."
           npm test -- tests/backend-integration.test.ts
-        continue-on-error: true
+        continue-on-error: false
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
