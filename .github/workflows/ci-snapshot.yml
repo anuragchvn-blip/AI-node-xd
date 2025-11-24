@@ -34,16 +34,6 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Run Backend Integration Tests
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}?pgbouncer=true
-          DIRECT_DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: |
-          echo "🧪 Running backend integration tests..."
-          npm test -- tests/backend-integration.test.ts
-        continue-on-error: true
-
       - name: Setup test database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}?pgbouncer=true
@@ -93,6 +83,17 @@ jobs:
         env:
           CI: true
         run: npx playwright test
+        continue-on-error: true
+
+      - name: Run Backend Integration Tests
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}?pgbouncer=true
+          DIRECT_DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          echo "🧪 Running backend integration tests..."
+          npm test -- tests/backend-integration.test.ts
         continue-on-error: true
 
       - name: Upload Playwright Report
