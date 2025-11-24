@@ -113,18 +113,44 @@ export class NotificationService {
   }
 
   /**
+   * Wrap long lines to prevent horizontal scrolling
+   */
+  private wrapLine(line: string, maxLength: number): string {
+    if (line.length <= maxLength) return line;
+    const wrapped: string[] = [];
+    let currentLine = '';
+    
+    line.split(' ').forEach(word => {
+      if ((currentLine + word).length > maxLength) {
+        if (currentLine) wrapped.push(currentLine.trim());
+        currentLine = word + ' ';
+      } else {
+        currentLine += word + ' ';
+      }
+    });
+    
+    if (currentLine) wrapped.push(currentLine.trim());
+    return wrapped.join('\n');
+  }
+
+  /**
    * Generate detailed markdown report
    */
   private generateMarkdownReport(payload: NotificationPayload): string {
     const timestamp = new Date().toISOString();
     const shortCommit = payload.commitHash.substring(0, 8);
     
-    // Build recommendations section
+    // Build recommendations section - don't add numbers if already numbered
     let recommendationsSection = '';
     if (payload.recommendations && payload.recommendations.length > 0) {
       recommendationsSection = payload.recommendations
-        .map((r, i) => `### ${i + 1}. ${r}\n\nTake action on this recommendation to resolve the failure.`)
-        .join('\n\n');
+        .map((r, i) => {
+          // Check if recommendation already starts with number
+          const startsWithNumber = /^\d+\./.test(r.trim());
+          const prefix = startsWithNumber ? '' : `${i + 1}. `;
+          return `### ${prefix}${r}\n\n✅ **Action Required:** Apply this fix to resolve the issue.`;
+        })
+        .join('\n\n---\n\n');
     } else {
       recommendationsSection = '### ⚠️ No specific recommendations available\n\nReview the failure logs and AI analysis above for debugging guidance.';
     }
@@ -134,17 +160,22 @@ export class NotificationService {
     if ((payload.similarPatterns || 0) > 0 && payload.similarPatternsDetails) {
       const patternsList = payload.similarPatternsDetails
         .map((p: any, i: number) => 
-          `### Pattern ${i + 1}\n- **Similarity:** ${p.similarity}%\n- **Summary:** ${p.summary}\n- **Date:** ${new Date(p.timestamp).toLocaleString()}`
+          `#### Pattern ${i + 1}\n\n- **Similarity Score:** ${p.similarity}%\n- **Description:** ${p.summary}\n- **First Seen:** ${new Date(p.timestamp).toLocaleString()}`
         )
         .join('\n\n');
-      similarPatternsSection = `Found **${payload.similarPatterns}** similar failure pattern(s) in history.\n\n${patternsList}`;
+      similarPatternsSection = `Found **${payload.similarPatterns}** similar failure pattern(s) in history:\n\n${patternsList}`;
     } else {
       similarPatternsSection = '**No similar patterns found.** This appears to be a new type of failure.';
     }
     
-    // Build failure details section - strip ANSI codes
+    // Build failure details section - strip ANSI codes and wrap long lines
     const rawFailureDetails = payload.failureLogs || payload.failureMessage;
-    const failureDetails = this.stripAnsiCodes(rawFailureDetails);
+    const cleanFailureDetails = this.stripAnsiCodes(rawFailureDetails);
+    // Split long lines for better readability
+    const failureDetails = cleanFailureDetails
+      .split('\n')
+      .map(line => line.length > 120 ? this.wrapLine(line, 120) : line)
+      .join('\n');
     
     // Build git diff section - strip ANSI codes
     let gitDiffSection = '_No git diff available_';
@@ -152,7 +183,7 @@ export class NotificationService {
       const cleanDiff = this.stripAnsiCodes(payload.gitDiff);
       const truncatedDiff = cleanDiff.substring(0, 3000);
       const diffTruncated = cleanDiff.length > 3000;
-      gitDiffSection = '```diff\n' + truncatedDiff + (diffTruncated ? '\n... (diff truncated)' : '') + '\n```';
+      gitDiffSection = '```diff\n' + truncatedDiff + (diffTruncated ? '\n\n... (diff truncated for brevity)' : '') + '\n```';
     }
     
     return `# 🚨 CI Failure Analysis Report
