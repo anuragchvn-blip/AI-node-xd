@@ -37,7 +37,7 @@ Frontend Push → GitHub Actions → Backend Tests → (on failure) → Snapshot
 - **Vector Store (pgvector)**: Stores failure embeddings for similarity search
 - **Supermemory Integration**: Generates embeddings, inserts/searches patterns
 - **Recommendation Engine**: Analyzes git diff + similar failures, suggests tests
-- **Notification Service**: Sends Slack messages, emails, GitHub PR comments
+- **Notification Service**: Sends Slack messages with GitHub Gists for full reports, emails, GitHub PR comments
 - **Artifact Storage (S3/MinIO)**: Stores snapshots with retention policy
 
 ---
@@ -101,8 +101,9 @@ See `.env.example` for all configuration options. Key variables:
 - `DATABASE_URL`: PostgreSQL connection string
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`: S3 configuration
 - `OPENAI_API_KEY`: For generating embeddings
-- `SLACK_BOT_TOKEN`, `SLACK_CHANNEL_ID`: Slack notifications
-- `GITHUB_TOKEN`: For PR comments
+- `GROQ_API_KEY`: For AI analysis using Groq (llama-3.3-70b)
+- `SLACK_WEBHOOK_URL`: Slack webhook for notifications
+- `GITHUB_TOKEN`: For PR comments and creating Gists with full reports
 - `API_SECRET_KEY`: Authentication for API calls
 - `SIMILARITY_THRESHOLD`: Minimum similarity score (default: 0.85)
 - `ARTIFACT_RETENTION_DAYS`: How long to keep snapshots (default: 30)
@@ -281,38 +282,21 @@ results.forEach((result) => {
 
 ## Notification Examples
 
-### Slack Payload
+### Slack Notification
 
-The system automatically sends Slack Block Kit messages:
+The system sends rich Slack notifications with:
+- **Brief Summary**: Key failure details and AI analysis (up to 500 chars)
+- **View Full Report Button**: Links to GitHub Gist with complete markdown report
+- **Quick Actions**: View screenshots, HAR files, similar patterns
 
-```json
-{
-  "channel": "C01234567",
-  "blocks": [
-    {
-      "type": "header",
-      "text": { "type": "plain_text", "text": "🚨 Backend Tests Failed" }
-    },
-    {
-      "type": "section",
-      "fields": [
-        { "type": "mrkdwn", "text": "*Commit:*\n`abc123`" },
-        { "type": "mrkdwn", "text": "*Author:*\njohn@example.com" }
-      ]
-    },
-    {
-      "type": "actions",
-      "elements": [
-        {
-          "type": "button",
-          "text": { "type": "plain_text", "text": "Screenshot" },
-          "url": "https://..."
-        }
-      ]
-    }
-  ]
-}
-```
+When AI analysis is longer than 500 characters, a private GitHub Gist is automatically created containing:
+- Complete failure logs
+- Full AI analysis with root cause
+- Detailed recommendations
+- Similar pattern history
+- Credits and metrics
+
+The Gist link is embedded as a clickable button in the Slack message for easy access.
 
 ### GitHub PR Comment
 

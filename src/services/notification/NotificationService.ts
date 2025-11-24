@@ -42,6 +42,47 @@ export class NotificationService {
   }
 
   /**
+   * Create GitHub Gist with full report
+   */
+  private async createGist(
+    description: string,
+    content: string,
+    filename: string
+  ): Promise<string | null> {
+    try {
+      const githubToken = process.env.GITHUB_TOKEN;
+      if (!githubToken) {
+        logger.warn('GITHUB_TOKEN not found, cannot create Gist');
+        return null;
+      }
+
+      const response = await axios.post(
+        'https://api.github.com/gists',
+        {
+          description,
+          public: false, // Private gist
+          files: {
+            [filename]: { content }
+          }
+        },
+        {
+          headers: {
+            'Authorization': `token ${githubToken}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      logger.info('GitHub Gist created', { url: response.data.html_url });
+      return response.data.html_url;
+    } catch (error) {
+      logger.error('Failed to create GitHub Gist', { error });
+      return null;
+    }
+  }
+
+  /**
    * Generate detailed markdown report
    */
   private generateMarkdownReport(payload: NotificationPayload): string {
@@ -176,16 +217,13 @@ ${payload.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
         } as any);
       }
 
-      await axios.post(webhookUrl, message);
-      logger.info('Slack notification sent', { commit: payload.commitHash });
-
-      // If analysis is long, create detailed report and send follow-up with link
+      // If analysis is long, create GitHub Gist and add link
       if (payload.aiAnalysis.length > 500) {
         const markdownReport = this.generateMarkdownReport(payload);
+        
+        // Save report to file for GitHub artifacts
         const fs = require('fs');
         const path = require('path');
-        
-        // Save report to file
         const reportsDir = path.join(process.cwd(), 'ci-reports');
         if (!fs.existsSync(reportsDir)) {
           fs.mkdirSync(reportsDir, { recursive: true });
@@ -197,11 +235,33 @@ ${payload.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
         
         logger.info('Detailed report saved', { filePath });
         
-        // Send follow-up message with file location
-        await axios.post(webhookUrl, {
-          text: `📄 *Full detailed report saved:* \`${fileName}\`\n_Check GitHub Actions artifacts or server logs for complete analysis_`
-        });
+        // Create GitHub Gist with full report
+        const gistUrl = await this.createGist(
+          `CI Failure Report - ${payload.commitHash.substring(0, 8)}`,
+          markdownReport,
+          fileName
+        );
+        
+        if (gistUrl) {
+          // Add button to view full report
+          message.blocks.push({
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📄 *Full detailed report available*`
+            },
+            accessory: {
+              type: 'button',
+              text: { type: 'plain_text', text: 'View Full Report' },
+              url: gistUrl,
+              style: 'primary'
+            }
+          } as any);
+        }
       }
+
+      await axios.post(webhookUrl, message);
+      logger.info('Slack notification sent', { commit: payload.commitHash });
     } catch (error: any) {
       logger.error('Slack notification failed', { error: error.message });
     }
