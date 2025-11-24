@@ -223,23 +223,39 @@ export class NotificationService {
       similarPatternsSection = '_No similar patterns found. This is a new failure type._';
     }
     
-    // Build git diff section with VS Code-style formatting
+    // Build git diff section - force proper line breaks
     let gitDiffSection = '_No git diff available_';
     if (payload.gitDiff) {
-      const cleanDiff = this.stripAnsiCodes(payload.gitDiff);
+      let cleanDiff = this.stripAnsiCodes(payload.gitDiff);
       
-      // Format like VS Code - preserve structure, clean up whitespace
-      const formattedDiff = cleanDiff
-        .split('\n')
-        .map(line => line.trimEnd()) // Keep indentation, remove trailing spaces
-        .filter(line => line.length <= 200) // Remove extremely long lines
-        .join('\n');
+      // Force proper line breaks if missing
+      if (!cleanDiff.includes('\n') && cleanDiff.length > 100) {
+        // Split on common diff markers if no newlines
+        cleanDiff = cleanDiff
+          .replace(/diff --git/g, '\ndiff --git')
+          .replace(/index /g, '\nindex ')
+          .replace(/---/g, '\n---')
+          .replace(/\+\+\+/g, '\n+++')
+          .replace(/@@ /g, '\n@@ ')
+          .replace(/\+([a-zA-Z])/g, '\n+$1')
+          .replace(/-([a-zA-Z])/g, '\n-$1')
+          .trim();
+      }
       
-      // Limit total length
-      const truncated = formattedDiff.substring(0, 2500);
-      const wasTruncated = formattedDiff.length > 2500;
+      // Format with proper structure
+      const lines = cleanDiff.split('\n');
+      const formattedLines = lines
+        .map(line => line.trimEnd())
+        .filter(line => line.length <= 150) // Skip extremely long lines
+        .slice(0, 100); // Max 100 lines
       
-      gitDiffSection = '```diff\n' + truncated + (wasTruncated ? '\n\n... (truncated)' : '') + '\n```';
+      const formattedDiff = formattedLines.join('\n');
+      
+      if (formattedDiff.trim()) {
+        gitDiffSection = '```diff\n' + formattedDiff + '\n```';
+      } else {
+        gitDiffSection = '_Git diff too large or malformed_';
+      }
     }
     
     return `# 🚨 CI Failure Analysis Report
