@@ -206,11 +206,10 @@ app.post('/api/v1/report', authenticate, async (req: Request, res: Response) => 
       select: { creditsBalance: true },
     });
     
-    // Send Slack notification (if webhook configured AND not from test AND not skipped)
+    // Send Slack notification (if webhook configured AND not from test)
     const isTestRequest = req.headers['x-test-mode'] === 'true' || payload.commitHash?.includes('-test');
-    const skipSlack = process.env.SKIP_SLACK_NOTIFICATION === 'true';
     const slackWebhook = process.env.SLACK_WEBHOOK_URL;
-    if (slackWebhook && !isTestRequest && !skipSlack) {
+    if (slackWebhook && !isTestRequest) {
       try {
         await notificationService.sendSlackNotification(slackWebhook, {
           projectName: project.repoUrl || 'CI System',

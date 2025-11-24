@@ -82,7 +82,6 @@ jobs:
       - name: Run Playwright E2E Tests
         env:
           CI: true
-          SKIP_CI_REPORT: true
         run: npx playwright test
         continue-on-error: true
 
@@ -91,21 +90,19 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}?pgbouncer=true
           DIRECT_DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          SKIP_SLACK_NOTIFICATION: true
         run: |
           echo "🧪 Running backend integration tests..."
-          npm test -- tests/backend-integration.test.ts 2>&1 | tee backend-test-results.log
+          npm test -- tests/backend-integration.test.ts
         continue-on-error: true
 
-      - name: Consolidate and Analyze All Failures
+      - name: Send Final AI Analysis Report
         if: always()
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_POOLER }}?pgbouncer=true
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          echo "📊 Consolidating all test failures..."
-          node consolidate-failures.js
+          echo "🤖 Running final AI analysis on all failures..."
+          node final-report.js
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4

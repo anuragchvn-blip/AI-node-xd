@@ -47,7 +47,10 @@ describe('Backend API Integration Tests', () => {
           failureLogs: 'Test: Sample Test\nError: Sample error for testing'
         },
         {
-          headers: { 'x-api-key': TEST_API_KEY }
+          headers: { 
+            'x-api-key': TEST_API_KEY,
+            'x-test-mode': 'true'
+          }
         }
       );
       
@@ -124,7 +127,10 @@ describe('Backend API Integration Tests', () => {
           failureLogs: 'Database connection test'
         },
         {
-          headers: { 'x-api-key': TEST_API_KEY }
+          headers: { 
+            'x-api-key': TEST_API_KEY,
+            'x-test-mode': 'true'
+          }
         }
       );
       
@@ -145,7 +151,10 @@ describe('Backend API Integration Tests', () => {
           failureLogs: 'Test: AI Analysis Test\nError: Testing Groq integration'
         },
         {
-          headers: { 'x-api-key': TEST_API_KEY }
+          headers: { 
+            'x-api-key': TEST_API_KEY,
+            'x-test-mode': 'true'
+          }
         }
       );
       

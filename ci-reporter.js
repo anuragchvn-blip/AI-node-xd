@@ -27,38 +27,16 @@ class CIReporter {
       return;
     }
 
-    // Skip immediate reporting if SKIP_CI_REPORT is set (consolidation mode)
-    if (process.env.SKIP_CI_REPORT === 'true') {
-      console.log(`\n⏭️  Skipping immediate CI report - will consolidate with backend tests`);
-      console.log(`   Detected ${uniqueFailures.length} E2E failure(s) for consolidation\n`);
-      
-      // Save failures for consolidation
-      const fs = require('fs');
-      const path = require('path');
-      const resultsDir = path.join(process.cwd(), 'test-results');
-      if (!fs.existsSync(resultsDir)) {
-        fs.mkdirSync(resultsDir, { recursive: true });
-      }
-      
-      fs.writeFileSync(
-        path.join(resultsDir, '.last-run.json'),
-        JSON.stringify({
-          status: result.status,
-          failedTests: uniqueFailures.map(f => ({
-            title: f.test,
-            error: f.error,
-            file: 'e2e/example.spec.ts'
-          }))
-        })
-      );
-      return;
-    }
+    console.log(`\n⚠️  Detected ${uniqueFailures.length} Playwright failure(s)`);
+    console.log('   (AI analysis will run after all tests complete)\n');
+    
+    // Save failures to file for final report
+    const fs = require('fs');
+    fs.writeFileSync('playwright-failures.json', JSON.stringify(uniqueFailures, null, 2));
+    return;
 
-    console.log(`\n${'='.repeat(80)}`);
-    console.log('🚨 TRIGGERING CI ANALYSIS SYSTEM');
-    console.log(`${'='.repeat(80)}`);
-    console.log(`Detected ${uniqueFailures.length} unique test failure(s) (retries deduplicated)\n`);
-
+    // This code is no longer used - final report handles everything
+    /*
     try {
       const commitHash = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
       const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
@@ -131,6 +109,7 @@ class CIReporter {
       }
       console.error(`${'='.repeat(80)}\n`);
     }
+    */
   }
 }
 
